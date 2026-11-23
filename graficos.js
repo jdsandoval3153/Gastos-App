@@ -30,8 +30,16 @@ function marco(alto, ticksY, escY, ancho, izq, der, arr, aba) {
   return g;
 }
 
-function tooltip(cont) {
+// En el celular el texto queda fijo al tocar; se oculta al tocar fuera del gráfico.
+const ocultadores = new Set();
+document.addEventListener("pointerdown", (e) => ocultadores.forEach((o) => {
+  if (!o.cont.isConnected) ocultadores.delete(o); else if (!o.cont.contains(e.target)) o.fn();
+}));
+const esMouse = (ev) => ev.pointerType === "mouse";
+
+function tooltip(cont, alOcultar = () => {}) {
   const t = document.createElement("div"); t.className = "tip"; t.hidden = true; cont.append(t);
+  ocultadores.add({ cont, fn: () => { t.hidden = true; alOcultar(); } });
   return {
     mostrar(html, x, y) { t.innerHTML = html; t.hidden = false;
       const w = cont.clientWidth, tw = t.offsetWidth; t.style.left = `${Math.min(Math.max(4, x - tw / 2), w - tw - 4)}px`; t.style.top = `${Math.max(0, y - t.offsetHeight - 10)}px`; },
@@ -86,7 +94,7 @@ export function lineas({ series, refs = [], xMin = 1, xMax, etiquetaX = (x) => x
   const zona = s("rect", { x: izq, y: 0, width: ancho - izq - der, height: alto, fill: "transparent" });
   svg.append(cruz, zona);
   cont.append(svg);
-  const tip = tooltip(cont);
+  const tip = tooltip(cont, () => cruz.setAttribute("visibility", "hidden"));
   const mover = (ev) => {
     const caja = svg.getBoundingClientRect(), px = ((ev.clientX - caja.left) / caja.width) * ancho;
     const x = Math.round(xMin + ((px - izq) / (ancho - izq - der)) * (xMax - xMin));
@@ -96,7 +104,7 @@ export function lineas({ series, refs = [], xMin = 1, xMax, etiquetaX = (x) => x
     tip.mostrar(`<div class="tip-t">${etiquetaX(x)}</div>${filas || "<div>sin datos</div>"}`, ((escX(x)) / ancho) * caja.width, ((arr + 10) / alto) * caja.height);
   };
   zona.addEventListener("pointermove", mover); zona.addEventListener("pointerdown", mover);
-  zona.addEventListener("pointerleave", () => { cruz.setAttribute("visibility", "hidden"); tip.ocultar(); });
+  zona.addEventListener("pointerleave", (ev) => { if (esMouse(ev)) { cruz.setAttribute("visibility", "hidden"); tip.ocultar(); } });
   if (series.length > 1 || refs.length) cont.append(leyenda([...series, ...refs.map((r) => ({ nombre: r.nombre, color: COLORES.referencia, guion: true }))]));
   return cont;
 }
@@ -128,9 +136,16 @@ export function barras({ barras: datos, color = COLORES.gasto, nombreMarca, form
       ((x + w / 2) / ancho) * caja.width, (Math.min(y, d.marca ? escY(d.marca) : y) / alto) * caja.height);
     };
     golpe.addEventListener("pointerenter", ver); golpe.addEventListener("pointerdown", ver);
-    golpe.addEventListener("pointerleave", () => tip.ocultar());
+    golpe.addEventListener("pointerleave", (ev) => { if (esMouse(ev)) tip.ocultar(); });
     g.append(golpe); svg.append(g);
     if (datos.length <= 14 || i % 2 === 0) svg.append(s("text", { x: x + w / 2, y: alto - 8, "text-anchor": "middle", class: "eje" }, d.etiqueta));
+  });
+  svg.addEventListener("pointermove", (ev) => {
+    if (esMouse(ev)) return;
+    const caja = svg.getBoundingClientRect(), px = ((ev.clientX - caja.left) / caja.width) * ancho;
+    const i = Math.floor((px - izq) / banda);
+    const objetivo = svg.querySelectorAll(".barra-g rect")[i];
+    if (objetivo) objetivo.dispatchEvent(new PointerEvent("pointerdown", { pointerType: "touch" }));
   });
   cont.prepend(svg);
   if (nombreMarca) cont.append(leyenda([{ nombre, color }, { nombre: nombreMarca, color: "#1f2a27" }]));

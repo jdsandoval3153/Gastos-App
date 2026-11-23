@@ -2,7 +2,7 @@
 import { CONFIG } from "./config.js";
 import { barras, COLORES, lineas } from "./graficos.js";
 
-const VERSION = "2.1.0";
+const VERSION = "2.1.1";
 const DEMO = new URLSearchParams(location.search).has("demo") || !CONFIG.CLAVE_PUBLICA;
 const api = DEMO ? (await import("./demo/motor_demo.js")).crearApiDemo() : (await import("./api.js")).crearApi(CONFIG);
 
@@ -58,6 +58,14 @@ function cargando(btn, on, texto) {
   if (on) { btn.dataset.t = btn.textContent; btn.textContent = texto || "Procesando…"; btn.disabled = true; }
   else { btn.textContent = btn.dataset.t; btn.disabled = false; }
 }
+
+/** Fecha y hora (Lima) en que se anotó un movimiento. */
+function anotado(m) {
+  if (!m.registrado_en) return null;
+  const [f, t] = new Date(m.registrado_en).toLocaleString("en-CA", { timeZone: "America/Lima", hour12: false }).split(", ");
+  return { fecha: f, hora: t.slice(0, 5).replace(/^24/, "00") };
+}
+const horaCorta = (m) => { const a = anotado(m); if (!a) return null; return a.fecha === m.fecha_gasto ? a.hora : `anotado ${ddmm(a.fecha)}`; };
 
 // ───────────── estado ─────────────
 const E = { base: null, tab: "dictar", mes: hoyLima().slice(0, 7), email: "", dictado: null, deshacer: null };
@@ -411,7 +419,9 @@ function listaMovimientos(movs, conAnio = false) {
     lista.append(h("li", { class: "mov", onclick: () => detalleMovimiento(m) },
       h("div", {}, h("div", {}, m.descripcion), h("div", { class: "suave pequeño" },
         [m.subcategoria || m.tipo, m.metodo, m.lugar, m.reembolsable ? `🧾 ${m.estado_reembolso}` : null].filter(Boolean).join(" · "))),
-      h("strong", { class: esEntrada(m.tipo) ? "positivo" : "" }, `${esEntrada(m.tipo) ? "+" : ""}${monto(m.monto_original, m.moneda)}`)));
+      h("div", { class: "derecha-mov" },
+        h("strong", { class: esEntrada(m.tipo) ? "positivo" : "" }, `${esEntrada(m.tipo) ? "+" : ""}${monto(m.monto_original, m.moneda)}`),
+        horaCorta(m) ? h("span", { class: "hora" }, horaCorta(m)) : null)));
   }
   return lista;
 }
@@ -425,7 +435,8 @@ async function detalleMovimiento(m) {
     m.cantidad && m.precio_unitario ? dato("Cantidad", `${m.cantidad.toLocaleString("es-PE", { maximumFractionDigits: 3 })} ${m.unidad || "und"} × ${soles(m.precio_unitario)}`)
       : m.cantidad && m.cantidad !== 1 ? dato("Cantidad", `${m.cantidad} ${m.unidad || "und"}`) : null,
     m.reembolsable ? dato("Reembolso", `${m.estado_reembolso} · ${m.proyecto || "sin proyecto"}`) : null,
-    dato("Concepto", m.concepto), dato("Origen", m.origen)),
+    dato("Concepto", m.concepto), dato("Origen", m.origen),
+    anotado(m) ? dato("Anotado", `${anotado(m).fecha.split("-").reverse().join("/")} ${anotado(m).hora}`) : null),
   [{ texto: "Borrar", valor: "borrar", clase: "peligro" }, { texto: "Editar", valor: "editar" }, { texto: "Cerrar", valor: null, clase: "primario" }]);
   if (accion === "borrar" && await confirmar("¿Borrar este movimiento?", `${m.descripcion} · ${monto(m.monto_original, m.moneda)}. No se puede deshacer.`, "Borrar")) {
     try { await api.borrarMovimiento(m.id); toast("Movimiento borrado"); irA("movimientos"); } catch (x) { toast(x.message); }

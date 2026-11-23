@@ -109,7 +109,7 @@ details.detalle-compra { margin-top: 12px; border-top: 1px dashed var(--borde); 
 details.detalle-compra summary { cursor: pointer; color: var(--primario); font-size: 14px; padding: 4px 0; }
 /* análisis */
 .grafico { position: relative; margin: 12px 0 4px; }
-.grafico svg { width: 100%; height: auto; display: block; overflow: visible; }
+.grafico svg { width: 100%; height: auto; display: block; overflow: visible; touch-action: pan-y; }
 .grafico .eje { font-size: 11px; fill: var(--suave); }
 .grafico .eti-ref { font-size: 11px; fill: var(--suave); }
 .grafico .eti-serie { font-size: 11px; fill: var(--texto); font-weight: 600; }
@@ -134,3 +134,5 @@ h3 { font-size: 15px; margin: 16px 0 0; }
 .mov.columna { flex-direction: column; align-items: stretch; gap: 2px; } .historial { margin-top: 6px; }
 .buscador { margin-bottom: 12px; }
 details.tarjeta summary { cursor: pointer; font-weight: 600; }
+.mov .derecha-mov { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.mov .hora { font-size: 11px; color: var(--suave); font-variant-numeric: tabular-nums; font-weight: 400; }
