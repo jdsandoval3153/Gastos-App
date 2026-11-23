@@ -456,6 +456,10 @@ function validarFilasManuales(filas, ctx, hoy) {
     if (f.proyecto_id !== null && !ctx.proyectos.some((p) => p.id === f.proyecto_id)) errores.push(`${n}: proyecto fuera de la lista`);
     if (f.reembolsable && f.tipo !== "Gasto") errores.push(`${n}: solo un gasto puede ser reembolsable`);
     if (!(f.descripcion || "").trim()) errores.push(`${n}: la descripci\xF3n no puede quedar vac\xEDa`);
+    if (f.cantidad && f.precio_unitario && Math.abs(f.cantidad * f.precio_unitario - f.monto_original) > 0.01) {
+      errores.push(`${n}: cantidad \xD7 precio unitario (${rd2(f.cantidad * f.precio_unitario)}) no da el monto (${f.monto_original})`);
+    }
+    if (f.unidad && !["und", "kg", "L"].includes(f.unidad)) errores.push(`${n}: unidad no v\xE1lida`);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f.fecha_gasto) || f.fecha_gasto > hoy) errores.push(`${n}: fecha no v\xE1lida o futura`);
   });
   return errores;

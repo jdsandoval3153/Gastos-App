@@ -104,3 +104,6 @@ fieldset.fila-form legend { font-size: 14px; color: var(--suave); padding: 0 6px
 .dato span:last-child { text-align: right; }
 @media (min-width: 700px) { .modal-fondo { align-items: center; } .modal { border-radius: 18px; } }
 [hidden] { display: none !important; }
+.tres { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+details.detalle-compra { margin-top: 12px; border-top: 1px dashed var(--borde); padding-top: 8px; }
+details.detalle-compra summary { cursor: pointer; color: var(--primario); font-size: 14px; padding: 4px 0; }

@@ -1,7 +1,7 @@
 // Gestor de Gastos 2.0 — app (PWA). Sin compilación: módulos ES y librerías locales en vendor/.
 import { CONFIG } from "./config.js";
 
-const VERSION = "2.0.1";
+const VERSION = "2.0.2";
 const DEMO = new URLSearchParams(location.search).has("demo") || !CONFIG.CLAVE_PUBLICA;
 const api = DEMO ? (await import("./demo/motor_demo.js")).crearApiDemo() : (await import("./api.js")).crearApi(CONFIG);
 
@@ -137,10 +137,10 @@ function vistaDictar(v) {
       irA("dictar");
     } catch (x) { toast(x.message); cargando(btn, false); }
   } }, "Procesar");
-  v.append(avisoRespaldo(),
+  v.append(...[avisoRespaldo(),
     h("section", { class: "tarjeta" }, h("h2", {}, "¿Qué gastaste?"), texto, btn,
       h("button", { class: "enlace", id: "a-mano", onclick: () => { E.dictado = { fase: "formulario", filas: [filaVacia()], marcados: [] }; irA("dictar"); } },
-        "Registrar a mano")));
+        "Registrar a mano"))].filter(Boolean));
   if (E.deshacer) v.append(E.deshacer.nodoAviso());
 }
 
@@ -265,6 +265,20 @@ function bloqueFila(f, marcados, i, quitar) {
     h("label", { class: "campo" }, "Concepto", h("input", { name: "concepto", value: f.concepto || "", placeholder: "viaje de obra, salida tarde…" })));
   extraReemb.hidden = !f.reembolsable;
   reemb.addEventListener("change", () => { extraReemb.hidden = !reemb.checked; });
+  // Detalle de la compra (opcional): lugar, producto, cantidad y precio unitario
+  const num = (n, v, paso, ph) => h("input", { name: n, type: "number", step: paso, min: "0", inputmode: "decimal", value: v ?? "", placeholder: ph || "" });
+  const cant = num("cantidad", f.cantidad, "0.001"), pu = num("precio_unitario", f.precio_unitario, "0.0001");
+  const unidad = h("select", { name: "unidad" }, [["und", "und"], ["kg", "kg"], ["L", "L"]]
+    .map(([v, t]) => h("option", { value: v, selected: v === (f.unidad || "und") }, t)));
+  const hayDetalle = !!(f.lugar || f.producto || f.precio_unitario || (f.cantidad && f.cantidad !== 1));
+  const detalle = h("details", { class: "detalle-compra", open: hayDetalle || marcados.includes("monto_original") },
+    h("summary", {}, "Detalle de la compra (lugar, producto, precio)"),
+    h("label", { class: "campo" }, "Lugar", h("input", { name: "lugar", value: f.lugar || "", placeholder: "Plaza Vea, Tottus, mercado…" })),
+    h("label", { class: "campo" }, "Producto", h("input", { name: "producto", value: f.producto || "", placeholder: "Leche Gloria 400 g" })),
+    h("div", { class: "tres" },
+      campo("monto_original", "Cantidad", cant), h("label", { class: "campo" }, "Unidad", unidad),
+      campo("monto_original", "Precio unitario", pu)),
+    h("p", { class: "suave pequeño" }, "Si pones cantidad y precio, el monto se calcula solo. Al peso: pon el monto y el precio por kg, y la cantidad se calcula."));
   const bloque = h("fieldset", { class: "fila-form", "data-i": i },
     h("legend", {}, `Movimiento ${i + 1}`, quitar ? h("button", { type: "button", class: "enlace", onclick: quitar }, "Quitar") : null),
     h("div", { class: "dos" },
@@ -278,15 +292,33 @@ function bloqueFila(f, marcados, i, quitar) {
       h("label", { class: "campo" }, "Moneda", moneda)),
     filaTc,
     campo("metodo_pago", "Método de pago", selectLista("metodo_pago_id", E.base.metodos, f.metodo_pago_id, "— método —")),
+    detalle,
     h("label", { class: "check" }, reemb, " Lo reembolsa la empresa"), extraReemb);
-  bloque._extra = { cantidad: f.cantidad ?? null, unidad: f.unidad ?? "und", precio_unitario: f.precio_unitario ?? null,
-    lugar: f.lugar ?? null, producto: f.producto ?? null };
+  // Cálculos de ayuda: cantidad × precio -> monto; al peso, monto / precio -> cantidad
+  const montoIn = bloque.querySelector("[name=monto_original]");
+  const r2 = (x) => Math.round(x * 100) / 100;
+  const recalcular = (origen) => {
+    const c = Number(cant.value), p = Number(pu.value), m = Number(montoIn.value);
+    if (unidad.value === "kg") {
+      // Al peso, lo pagado manda: el peso sale de monto / precio por kg (salvo que se escriba el peso a mano)
+      if (origen === "cantidad" && c > 0 && p > 0) montoIn.value = r2(c * p).toFixed(2);
+      else if (p > 0 && m > 0) cant.value = (Math.round((m / p) * 1000) / 1000).toString();
+    } else if (c > 0 && p > 0 && origen !== "monto") montoIn.value = r2(c * p).toFixed(2);
+  };
+  cant.addEventListener("change", () => recalcular("cantidad"));
+  pu.addEventListener("change", () => recalcular("precio"));
+  unidad.addEventListener("change", () => recalcular("unidad"));
+  montoIn.addEventListener("change", () => recalcular("monto"));
   return bloque;
 }
 function leerFila(b) {
   const v = (n) => b.querySelector(`[name=${n}]`);
   const moneda = v("moneda").value;
-  return { ...b._extra, fecha_gasto: v("fecha_gasto").value, tipo: v("tipo").value,
+  const nOnull = (n) => (v(n).value === "" ? null : Number(v(n).value));
+  const cantidad = nOnull("cantidad"), precio = nOnull("precio_unitario");
+  return { lugar: v("lugar").value.trim() || null, producto: v("producto").value.trim() || null,
+    cantidad: cantidad || (precio ? 1 : null), unidad: v("unidad").value, precio_unitario: precio || null,
+    fecha_gasto: v("fecha_gasto").value, tipo: v("tipo").value,
     categoria_id: v("categoria_id").value ? Number(v("categoria_id").value) : null, descripcion: v("descripcion").value.trim(),
     moneda, monto_original: Number(v("monto_original").value), tipo_cambio: moneda === "PEN" ? 1 : Number(v("tipo_cambio").value),
     metodo_pago_id: v("metodo_pago_id").value ? Number(v("metodo_pago_id").value) : null, reembolsable: v("reembolsable").checked,
@@ -313,11 +345,11 @@ function formularioMovimientos(filas, marcados = [], motivo) {
       E.dictado = null; prepararDeshacer(r.lote_id, r.guardados); irA("dictar");
     } catch (x) { toast(x.message); cargando(guardar, false); }
   });
-  cont.append(h("h2", {}, "Completar a mano"),
+  cont.append(...[h("h2", {}, "Completar a mano"),
     motivo?.length ? h("div", { class: "aviso" }, h("p", {}, "Revisa lo marcado en rojo suave:"), h("ul", {}, motivo.map((m) => h("li", {}, m)))) : null,
     lista, h("button", { type: "button", class: "enlace", onclick: () => { filas = [...leerTodas(), filaVacia()]; pintar(); } }, "+ Agregar otro movimiento"),
     err, h("div", { class: "fila-botones" },
-      h("button", { type: "button", class: "secundario", onclick: () => { E.dictado = null; irA("dictar"); } }, "Cancelar"), guardar));
+      h("button", { type: "button", class: "secundario", onclick: () => { E.dictado = null; irA("dictar"); } }, "Cancelar"), guardar)].filter(Boolean));
   return cont;
 }
 
@@ -361,7 +393,7 @@ async function detalleMovimiento(m) {
     dato("Fecha", m.fecha_gasto), dato("Tipo", m.tipo), dato("Categoría", m.categoria && `${m.categoria} / ${m.subcategoria}`),
     dato("Monto", monto(m.monto_original, m.moneda)), m.moneda !== "PEN" ? dato("En soles", `${soles(m.monto_pen)} (TC ${m.tipo_cambio})`) : null,
     dato("Método", m.metodo), dato("Lugar", m.lugar), dato("Producto", m.producto),
-    m.cantidad && m.precio_unitario ? dato("Cantidad", `${fmt.format(m.cantidad).replace(/,00$/, "")} ${m.unidad || "und"} × ${soles(m.precio_unitario)}`)
+    m.cantidad && m.precio_unitario ? dato("Cantidad", `${m.cantidad.toLocaleString("es-PE", { maximumFractionDigits: 3 })} ${m.unidad || "und"} × ${soles(m.precio_unitario)}`)
       : m.cantidad && m.cantidad !== 1 ? dato("Cantidad", `${m.cantidad} ${m.unidad || "und"}`) : null,
     m.reembolsable ? dato("Reembolso", `${m.estado_reembolso} · ${m.proyecto || "sin proyecto"}`) : null,
     dato("Concepto", m.concepto), dato("Origen", m.origen)),
@@ -378,6 +410,9 @@ function editarMovimiento(m) {
   const guardar = h("button", { class: "primario", type: "submit" }, "Guardar cambios");
   const form = h("form", { class: "tarjeta", onsubmit: async (e) => {
     e.preventDefault(); const f = leerFila(bloque);
+    if (f.cantidad && f.precio_unitario && Math.abs(f.cantidad * f.precio_unitario - f.monto_original) > 0.01) {
+      err.textContent = `Cantidad × precio da ${fmt.format(f.cantidad * f.precio_unitario)}, no ${fmt.format(f.monto_original)}.`; return;
+    }
     if (!(f.monto_original > 0) || !f.descripcion || !f.metodo_pago_id || (f.tipo === "Gasto" && !f.categoria_id) || !(f.tipo_cambio > 0)) {
       err.textContent = "Revisa monto, descripción, método, categoría y tipo de cambio."; return;
     }
@@ -387,6 +422,7 @@ function editarMovimiento(m) {
         moneda: f.moneda, monto_original: f.monto_original, tipo_cambio: f.tipo_cambio,
         monto_pen: Math.round(f.monto_original * f.tipo_cambio * 100) / 100, metodo_pago_id: f.metodo_pago_id,
         reembolsable: f.reembolsable, proyecto_id: f.proyecto_id, concepto: f.concepto,
+        lugar: f.lugar, producto: f.producto, cantidad: f.cantidad, unidad: f.unidad, precio_unitario: f.precio_unitario,
         estado_reembolso: f.reembolsable ? (m.estado_reembolso || "Pendiente") : null });
       toast("Cambios guardados"); irA("movimientos");
     } catch (x) { err.textContent = x.message; cargando(guardar, false); }
