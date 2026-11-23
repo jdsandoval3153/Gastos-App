@@ -65,7 +65,15 @@ const tcVigente = (moneda, fecha = hoyLima()) => moneda === "PEN" ? 1
 
 // ───────────── arranque e ingreso ─────────────
 async function iniciar() {
-  if ("serviceWorker" in navigator && !DEMO && location.protocol === "https:") navigator.serviceWorker.register("./sw.js").catch(() => {});
+  if ("serviceWorker" in navigator && !DEMO && location.protocol === "https:") {
+    // Si llega una versión nueva de la app, recarga una vez para usarla
+    const habiaControl = !!navigator.serviceWorker.controller;
+    let recargado = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (habiaControl && !recargado) { recargado = true; location.reload(); }
+    });
+    navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then((r) => r.update()).catch(() => {});
+  }
   const s = await api.sesion();
   if (s) { E.email = s.email; await entrarApp(); } else pantallaIngreso();
 }
