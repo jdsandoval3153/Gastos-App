@@ -123,6 +123,42 @@ export function crearApi({ SUPABASE_URL, CLAVE_PUBLICA }) {
       return { llamadas: r.length, total: r.reduce((s, x) => s + Number(x.costo_usd || 0), 0) };
     },
 
+    // ---------- análisis ----------
+    async asegurarMes() { ok(await sb.rpc("asegurar_mes")); },
+    async metas() {
+      return ok(await sb.from("metas_mensuales").select("mes, meta, tope, calculo, reporte").eq("libro_id", libroId)
+        .order("mes", { ascending: false }).limit(24)).map((m) => ({ ...m, meta: Number(m.meta), tope: m.tope === null ? null : Number(m.tope) }));
+    },
+    async resumenMensual() {
+      return ok(await sb.rpc("resumen_mensual", { p_libro: libroId })).map((r) => ({ ...r,
+        gasto: Number(r.gasto), reembolsable: Number(r.reembolsable), devuelto: Number(r.devuelto) }));
+    },
+    async gastoDiario(desde) {
+      return ok(await sb.rpc("gasto_diario", { p_libro: libroId, p_desde: desde })).map((r) => ({ fecha: r.fecha, gasto: Number(r.gasto) }));
+    },
+    async presupuestos() {
+      return ok(await sb.from("presupuestos").select("categoria, monto_mensual_pen").eq("libro_id", libroId))
+        .map((p) => ({ categoria: p.categoria, monto: Number(p.monto_mensual_pen) }));
+    },
+    async guardarPresupuestos(lista) {
+      const borrar = lista.filter((p) => !(p.monto > 0)).map((p) => p.categoria);
+      const poner = lista.filter((p) => p.monto > 0).map((p) => ({ libro_id: libroId, categoria: p.categoria, monto_mensual_pen: p.monto }));
+      if (poner.length) ok(await sb.from("presupuestos").upsert(poner, { onConflict: "libro_id,categoria" }).select("categoria"));
+      if (borrar.length) ok(await sb.from("presupuestos").delete().eq("libro_id", libroId).in("categoria", borrar).select("categoria"));
+    },
+    async compras() {
+      return ok(await sb.from("movimientos").select("fecha_gasto, producto, lugar, cantidad, unidad, precio_unitario, monto_pen")
+        .eq("libro_id", libroId).not("producto", "is", null).order("fecha_gasto", { ascending: false }).limit(2000))
+        .map((c) => ({ ...c, cantidad: c.cantidad === null ? null : Number(c.cantidad),
+          precio_unitario: c.precio_unitario === null ? null : Number(c.precio_unitario), monto_pen: Number(c.monto_pen) }));
+    },
+    async buscar(texto) {
+      const t = texto.replace(/[%,()]/g, " ").trim();
+      return ok(await sb.from("movimientos").select(SELECT_MOV).eq("libro_id", libroId)
+        .or(`descripcion.ilike.%${t}%,producto.ilike.%${t}%,lugar.ilike.%${t}%,concepto.ilike.%${t}%`)
+        .order("fecha_gasto", { ascending: false }).limit(200)).map(plano);
+    },
+
     /** Todo el libro, de 1000 en 1000, para el respaldo. */
     async todoElLibro() {
       const filas = [];

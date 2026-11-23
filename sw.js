@@ -1,7 +1,7 @@
 // Service worker: guarda la "cáscara" de la app para que abra rápido e instalable.
 // Los datos (Supabase y la función) siempre van por la red: nunca se guardan en caché.
-const CACHE = "gastos-v2.0.2-b";
-const ARCHIVOS = ["./", "index.html", "estilos.css", "app.js", "api.js", "config.js", "manifest.webmanifest",
+const CACHE = "gastos-v2.1.0";
+const ARCHIVOS = ["./", "index.html", "estilos.css", "app.js", "api.js", "graficos.js", "config.js", "manifest.webmanifest",
   "vendor/supabase.js", "vendor/xlsx.full.min.js", "vendor/jspdf.umd.min.js", "vendor/jspdf.plugin.autotable.min.js",
   "iconos/icono-192.png", "iconos/icono-512.png"];
 

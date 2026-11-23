@@ -1,7 +1,8 @@
 // Gestor de Gastos 2.0 — app (PWA). Sin compilación: módulos ES y librerías locales en vendor/.
 import { CONFIG } from "./config.js";
+import { barras, COLORES, lineas } from "./graficos.js";
 
-const VERSION = "2.0.2";
+const VERSION = "2.1.0";
 const DEMO = new URLSearchParams(location.search).has("demo") || !CONFIG.CLAVE_PUBLICA;
 const api = DEMO ? (await import("./demo/motor_demo.js")).crearApiDemo() : (await import("./api.js")).crearApi(CONFIG);
 
@@ -103,8 +104,8 @@ async function entrarApp() {
 }
 
 // ───────────── marco: cabecera y pestañas ─────────────
-const TABS = [["dictar", "🎙", "Dictar"], ["movimientos", "📒", "Movimientos"], ["reembolsos", "🧾", "Reembolsos"],
-  ["recorrido", "🔎", "Recorrido"], ["mas", "⋯", "Más"]];
+const TABS = [["dictar", "🎙", "Dictar"], ["movimientos", "📒", "Movimientos"], ["analisis", "📈", "Análisis"],
+  ["reembolsos", "🧾", "Reembolsos"], ["mas", "⋯", "Más"]];
 function dibujarMarco() {
   $("#app").replaceChildren(
     h("header", { class: "cabecera" }, h("div", {}, h("strong", {}, "Gastos"), h("span", { class: "suave" }, ` · ${E.base.libro.nombre}`)),
@@ -117,7 +118,10 @@ function irA(tab) {
   E.tab = tab;
   document.querySelectorAll(".pestanas button").forEach((b) => b.classList.toggle("activa", b.dataset.tab === tab));
   const v = $("#vista"); v.replaceChildren(); window.scrollTo(0, 0);
-  ({ dictar: vistaDictar, movimientos: vistaMovimientos, reembolsos: vistaReembolsos, recorrido: vistaRecorrido, mas: vistaMas })[tab](v);
+  ({ dictar: vistaDictar, movimientos: vistaMovimientos, analisis: vistaAnalisis, reembolsos: vistaReembolsos,
+    recorrido: (x) => { x.append(h("button", { class: "enlace", onclick: () => irA("mas") }, "‹ Volver a Más")); vistaRecorrido(x); },
+    mas: vistaMas })[tab](v);
+  document.querySelectorAll(".pestanas button").forEach((b) => b.classList.toggle("activa", b.dataset.tab === (tab === "recorrido" ? "mas" : tab)));
 }
 
 // ───────────── DICTAR ─────────────
@@ -367,7 +371,20 @@ async function vistaMovimientos(v) {
     h("button", { class: "secundario", "aria-label": "Mes anterior", onclick: () => { E.mes = moverMes(E.mes, -1); irA("movimientos"); } }, "‹"),
     h("h2", {}, nombreMes(E.mes)),
     h("button", { class: "secundario", "aria-label": "Mes siguiente", disabled: E.mes >= hoyLima().slice(0, 7), onclick: () => { E.mes = moverMes(E.mes, 1); irA("movimientos"); } }, "›"));
-  v.append(cab, h("p", { class: "centro suave" }, "Cargando…"));
+  const q = h("input", { type: "search", id: "buscar", placeholder: "Buscar en todo el historial (taxi, Plaza Vea, leche…)", enterkeyhint: "search" });
+  const buscador = h("form", { class: "buscador", onsubmit: async (e) => {
+    e.preventDefault(); if (q.value.trim().length < 2) return;
+    const zona = $("#vista"); zona.replaceChildren(buscador, h("p", { class: "centro suave" }, "Buscando…"));
+    try {
+      const res = await api.buscar(q.value.trim());
+      const tot = res.filter((m) => m.tipo === "Gasto").reduce((a, m) => a + m.monto_pen, 0);
+      zona.replaceChildren(buscador,
+        h("p", { class: "suave" }, `${res.length}${res.length === 200 ? "+" : ""} resultados · gastos por ${soles(tot)} `,
+          h("button", { type: "button", class: "enlace", onclick: () => irA("movimientos") }, "volver al mes")),
+        listaMovimientos(res, true));
+    } catch (x) { toast(x.message); }
+  } }, q);
+  v.append(buscador, cab, h("p", { class: "centro suave" }, "Cargando…"));
   let movs;
   try { movs = await api.movimientos(`${E.mes}-01`, finDeMes(E.mes)); } catch (x) { v.lastChild.textContent = x.message; return; }
   const gastos = movs.filter((m) => m.tipo === "Gasto" || m.tipo === "Inversión");
@@ -383,16 +400,20 @@ async function vistaMovimientos(v) {
     h("div", { class: "barras" }, Object.entries(porCat).sort((a, b) => b[1] - a[1]).map(([c, x]) =>
       h("div", { class: "barra" }, h("span", { class: "et" }, c), h("span", { class: "pista" }, h("span", { class: "relleno", style: `width:${(x / max) * 100}%` })),
         h("span", { class: "val" }, soles(x))))));
+  v.lastChild.replaceWith(resumen, movs.length ? listaMovimientos(movs) : h("p", { class: "centro suave" }, "Sin movimientos este mes."));
+}
+
+function listaMovimientos(movs, conAnio = false) {
   let fecha = "";
   const lista = h("ul", { class: "lista-mov" });
   for (const m of movs) {
-    if (m.fecha_gasto !== fecha) { fecha = m.fecha_gasto; lista.append(h("li", { class: "dia" }, ddmm(fecha))); }
+    if (m.fecha_gasto !== fecha) { fecha = m.fecha_gasto; lista.append(h("li", { class: "dia" }, conAnio ? fecha.split("-").reverse().join("/") : ddmm(fecha))); }
     lista.append(h("li", { class: "mov", onclick: () => detalleMovimiento(m) },
       h("div", {}, h("div", {}, m.descripcion), h("div", { class: "suave pequeño" },
-        [m.subcategoria || m.tipo, m.metodo, m.reembolsable ? `🧾 ${m.estado_reembolso}` : null].filter(Boolean).join(" · "))),
+        [m.subcategoria || m.tipo, m.metodo, m.lugar, m.reembolsable ? `🧾 ${m.estado_reembolso}` : null].filter(Boolean).join(" · "))),
       h("strong", { class: esEntrada(m.tipo) ? "positivo" : "" }, `${esEntrada(m.tipo) ? "+" : ""}${monto(m.monto_original, m.moneda)}`)));
   }
-  v.lastChild.replaceWith(resumen, movs.length ? lista : h("p", { class: "centro suave" }, "Sin movimientos este mes."));
+  return lista;
 }
 
 async function detalleMovimiento(m) {
@@ -437,6 +458,195 @@ function editarMovimiento(m) {
   } }, h("h2", {}, "Editar movimiento"), bloque, err,
   h("div", { class: "fila-botones" }, h("button", { type: "button", class: "secundario", onclick: () => irA("movimientos") }, "Cancelar"), guardar));
   v.replaceChildren(form);
+}
+
+// ───────────── ANÁLISIS ─────────────
+const MES_CORTO = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const mesCorto = (ym) => `${MES_CORTO[Number(ym.slice(5, 7)) - 1]} ${ym.slice(2, 4)}`;
+const diasDelMes = (ym) => Number(finDeMes(ym).slice(8, 10));
+const r2 = (x) => Math.round(x * 100) / 100;
+
+/** Acumulado día a día de un mes: [[día, acumulado], ...] hasta `hastaDia`. */
+function acumuladoDiario(diario, ym, hastaDia) {
+  const porDia = {}; diario.filter((d) => d.fecha.startsWith(ym)).forEach((d) => (porDia[Number(d.fecha.slice(8, 10))] = d.gasto));
+  const pts = []; let acc = 0;
+  for (let dia = 1; dia <= hastaDia; dia++) { acc += porDia[dia] || 0; pts.push([dia, r2(acc)]); }
+  return pts;
+}
+
+async function vistaAnalisis(v) {
+  v.append(h("p", { class: "centro suave" }, "Calculando…"));
+  try { await api.asegurarMes(); } catch { /* si falla, se muestra lo que haya */ }
+  const hoy = hoyLima(), ym = hoy.slice(0, 7), diaHoy = Number(hoy.slice(8, 10));
+  let metas, resumen, diario, presup;
+  try {
+    [metas, resumen, diario, presup] = await Promise.all([api.metas(), api.resumenMensual(),
+      api.gastoDiario(`${moverMes(ym, -6)}-01`), api.presupuestos()]);
+  } catch (x) { v.lastChild.textContent = x.message; return; }
+  const metaDe = (m) => metas.find((x) => x.mes.startsWith(m));
+  const metaAct = metaDe(ym);
+  const porMes = {}; // mes -> {gasto, reemb, devuelto, cats{}}
+  for (const r of resumen) {
+    const o = (porMes[r.mes] ||= { gasto: 0, reemb: 0, devuelto: 0, cats: {} });
+    o.gasto += r.gasto; o.reemb += r.reembolsable; o.devuelto += r.devuelto;
+    if (r.gasto) o.cats[r.categoria] = (o.cats[r.categoria] || 0) + r.gasto;
+  }
+  const meses = Object.keys(porMes).sort();
+
+  // 1) Este mes frente a la meta
+  const actual = acumuladoDiario(diario, ym, diaHoy);
+  const gastado = actual.length ? actual[actual.length - 1][1] : 0;
+  const meta = metaAct?.meta ?? null;
+  const proyeccion = r2((gastado / Math.max(1, diaHoy)) * diasDelMes(ym));
+  const prev6 = [1, 2, 3, 4, 5, 6].map((k) => moverMes(ym, -k)).filter((m) => porMes[m]);
+  const promedio = [];
+  for (let dia = 1; dia <= diasDelMes(ym); dia++) {
+    const vals = prev6.map((m) => { const a = acumuladoDiario(diario, m, Math.min(dia, diasDelMes(m))); return a.length ? a[a.length - 1][1] : 0; });
+    if (vals.length) promedio.push([dia, r2(vals.reduce((x, y) => x + y, 0) / vals.length)]);
+  }
+  const pasado = meta !== null && gastado > meta;
+  const kpi = (et, val, clase) => h("div", {}, h("span", { class: "suave" }, et), h("strong", { class: clase || "" }, val));
+  const seccionMes = h("section", { class: "tarjeta" }, h("h2", {}, `Este mes · ${nombreMes(ym)}`),
+    h("div", { class: "kpis" }, kpi("Gastado", soles(gastado)), kpi("Meta", meta === null ? "—" : soles(meta)),
+      pasado ? kpi("Te pasaste por", soles(gastado - meta), "alerta") : kpi("Te queda", meta === null ? "—" : soles(meta - gastado), "positivo")),
+    h("p", { class: `estado ${proyeccion > (meta ?? Infinity) ? "mal" : "bien"}` },
+      proyeccion > (meta ?? Infinity) ? "⚠ " : "✓ ",
+      `A este ritmo cerrarías el mes en ${soles(proyeccion)}`, meta !== null ? (proyeccion > meta ? ", por encima de la meta." : ", dentro de la meta.") : "."),
+    lineas({ titulo: "Gasto acumulado del mes", series: [
+      { nombre: "Este mes", color: COLORES.gasto, puntos: actual, etiqueta: true },
+      ...(promedio.length ? [{ nombre: `Promedio ${prev6.length} meses`, color: COLORES.promedio, puntos: promedio, etiqueta: true }] : [])],
+    refs: meta !== null ? [{ y: meta, nombre: "Meta" }] : [], xMin: 1, xMax: diasDelMes(ym), etiquetaX: (d) => `día ${d}`, formato: soles }),
+    h("p", { class: "suave pequeño" }, "No incluye lo reembolsable: eso va aparte, más abajo."));
+
+  // 2) Crecimiento: gasto de cada mes con su meta, y total acumulado
+  const ult12 = meses.filter((m) => m <= ym).slice(-12);
+  let acum = 0; const acumPts = meses.filter((m) => m <= ym).map((m, i) => [i, r2((acum += porMes[m].gasto))]);
+  const todos = meses.filter((m) => m <= ym);
+  const seccionCrec = h("section", { class: "tarjeta" }, h("h2", {}, "Gasto mensual"),
+    barras({ nombre: "Gasto", nombreMarca: "Meta", formato: soles, titulo: "Gasto de cada mes con su meta",
+      barras: ult12.map((m) => { const mt = metaDe(m)?.meta; const g = r2(porMes[m].gasto);
+        return { etiqueta: mesCorto(m), valor: g, marca: mt,
+          detalle: mt ? `<div>${m === ym ? "Mes en curso" : g <= mt ? "✓ Cumplió" : "⚠ Se pasó"}</div>` : "" }; }) }),
+    h("h3", {}, `Total acumulado desde ${nombreMes(todos[0] || ym)}`),
+    lineas({ titulo: "Gasto total acumulado", series: [{ nombre: "Acumulado", color: COLORES.gasto, puntos: acumPts, etiqueta: true }],
+      xMin: 0, xMax: Math.max(1, acumPts.length - 1), etiquetaX: (i) => mesCorto(todos[i] || ym), formato: soles }));
+
+  // 3) Reembolsables, aparte: lo que va sumando y lo que falta cobrar
+  let porCobrar = 0; const cobrarPts = todos.map((m, i) => [i, r2((porCobrar += porMes[m].reemb - porMes[m].devuelto))]);
+  const reembMeses = ult12.filter((m) => porMes[m].reemb > 0 || porMes[m].devuelto > 0);
+  const seccionReemb = h("section", { class: "tarjeta" }, h("h2", {}, "Reembolsables (aparte)"),
+    h("div", { class: "kpis" }, kpi("Por cobrar hoy", soles(Math.max(0, porCobrar)), porCobrar > 0 ? "alerta" : ""),
+      kpi("Este mes", soles(porMes[ym]?.reemb || 0)), kpi("Últimos 12 meses", soles(ult12.reduce((a, m) => a + porMes[m].reemb, 0)))),
+    reembMeses.length ? barras({ nombre: "Pagado por ti", color: COLORES.reembolso, formato: soles, titulo: "Reembolsables por mes",
+      barras: ult12.map((m) => ({ etiqueta: mesCorto(m), valor: r2(porMes[m].reemb), detalle: `<div>Devuelto: <b>${soles(porMes[m].devuelto)}</b></div>` })) }) : null,
+    h("h3", {}, "Por cobrar acumulado"),
+    lineas({ titulo: "Saldo por cobrar a la empresa", series: [{ nombre: "Por cobrar", color: COLORES.reembolso, puntos: cobrarPts.map(([i, y]) => [i, Math.max(0, y)]), etiqueta: true }],
+      xMin: 0, xMax: Math.max(1, cobrarPts.length - 1), etiquetaX: (i) => mesCorto(todos[i] || ym), formato: soles }),
+    h("p", { class: "suave pequeño" }, "Sube cuando pagas algo reembolsable y baja cuando la empresa te devuelve."));
+
+  // 4) Presupuestos por categoría
+  const seccionPres = seccionPresupuestos(porMes, ym, presup, meta);
+
+  // 5) Reporte del mes anterior y 6) cómo se calculó la meta
+  const rep = metaAct?.reporte;
+  const seccionRep = rep && rep.mes ? h("section", { class: "tarjeta" }, h("h2", {}, `Reporte de ${nombreMes(rep.mes)}`),
+    h("p", { class: `estado ${rep.cumplio ? "bien" : "mal"}` }, rep.cumplio ? "✓ Cumpliste la meta" : "⚠ No cumpliste la meta",
+      `: gastaste ${soles(rep.gasto)} con meta de ${soles(rep.meta)} (${rep.cumplio ? "sobraron" : "te pasaste por"} ${soles(Math.abs(rep.diferencia))}).`),
+    rep.variacion_vs_promedio_pct !== null && rep.variacion_vs_promedio_pct !== undefined
+      ? h("p", {}, `Frente a tu promedio de 12 meses (${soles(rep.promedio_12m)}): ${rep.variacion_vs_promedio_pct > 0 ? "+" : ""}${rep.variacion_vs_promedio_pct}%.`) : null,
+    rep.dia_supero_meta ? h("p", {}, `Pasaste la meta el ${rep.dia_supero_meta.split("-").reverse().join("/")}.`) : null,
+    h("table", { class: "tabla" }, h("thead", {}, h("tr", {}, h("th", {}, "Categoría"), h("th", {}, "Gasto"), h("th", {}, "Prom. 6m"), h("th", {}, "Presup."))),
+      h("tbody", {}, (rep.por_categoria || []).slice(0, 8).map((c) => h("tr", {}, h("td", {}, c.categoria), h("td", {}, fmt.format(c.gasto)),
+        h("td", { class: c.promedio_6m && c.gasto > c.promedio_6m * 1.2 ? "alerta" : "" }, c.promedio_6m ? fmt.format(c.promedio_6m) : "—"),
+        h("td", { class: c.presupuesto && c.gasto > c.presupuesto ? "alerta" : "" }, c.presupuesto ? fmt.format(c.presupuesto) : "—"))))),
+    h("h3", {}, "Mayores gastos"),
+    h("ul", { class: "simple" }, (rep.mayores_gastos || []).map((g) => h("li", {}, `${ddmm(g.fecha)} · ${g.descripcion} · `, h("strong", {}, soles(g.monto))))),
+    rep.reembolsables ? h("p", { class: "suave" }, `Reembolsables del mes: ${soles(rep.reembolsables.gastado_mes)} · por cobrar al cierre: ${soles(rep.reembolsables.por_cobrar_al_cierre)}.`) : null) : null;
+
+  const c = metaAct?.calculo;
+  const seccionCalc = c ? h("details", { class: "tarjeta" }, h("summary", {}, "¿Cómo se calculó la meta de este mes?"),
+    h("p", { class: "pequeño" }, c.tope
+      ? `Mediana de los últimos ${c.meses.length} meses: ${soles(c.mediana)}. Tope de mes "normal" (mediana × 1,25): ${soles(c.tope)}. Promedio de los meses normales: ${soles(c.promedio_normales)}. Meta = promedio redondeado hacia arriba a la centena − S/ 200 = ${soles(c.meta)}.`
+      : c.metodo),
+    h("ul", { class: "simple pequeño" }, (c.meses || []).map((m) => h("li", { class: m.incluido === false ? "tachado" : "" },
+      `${nombreMes(m.mes)}: ${soles(m.gasto)}${m.incluido === false ? " (fuera: mes atípico)" : ""}`))),
+    h("p", { class: "suave pequeño" }, "Se calcula sola el día 1 de cada mes y no cambia durante el mes.")) : null;
+
+  v.lastChild.replaceWith(...[seccionMes, seccionCrec, seccionReemb, seccionPres, seccionRep, seccionCalc, seccionPrecios()].filter(Boolean));
+}
+
+function seccionPresupuestos(porMes, ym, presup, meta) {
+  const sec = h("section", { class: "tarjeta" });
+  const previos = [1, 2, 3, 4, 5, 6].map((k) => moverMes(ym, -k)).filter((m) => porMes[m]);
+  const cats = [...new Set([...presup.map((p) => p.categoria), ...previos.flatMap((m) => Object.keys(porMes[m].cats)),
+    ...Object.keys(porMes[ym]?.cats || {})])].filter((c) => c !== "Sin categoría");
+  const sugerido = (cat) => { const vals = previos.map((m) => porMes[m].cats[cat] || 0).sort((a, b) => a - b); const n = vals.length;
+    const med = n ? (n % 2 ? vals[(n - 1) / 2] : (vals[n / 2 - 1] + vals[n / 2]) / 2) : 0; return Math.ceil(med / 10) * 10; };
+  const pres = Object.fromEntries(presup.map((p) => [p.categoria, p.monto]));
+  const mostrar = () => {
+    const gastoCat = porMes[ym]?.cats || {};
+    const filas = cats.map((c) => ({ c, g: gastoCat[c] || 0, p: pres[c] || 0 })).sort((a, b) => (b.p ? b.g / b.p : 0) - (a.p ? a.g / a.p : 0) || b.g - a.g);
+    const suma = Object.values(pres).reduce((a, x) => a + x, 0);
+    sec.replaceChildren(h("h2", {}, "Presupuestos por categoría"),
+      h("p", { class: "suave pequeño" }, suma ? `Tus presupuestos suman ${soles(suma)}${meta !== null ? ` · meta del mes ${soles(meta)}` : ""}.` : "Aún no tienes presupuestos. Pulsa «Editar» y luego «Sugerir según mi historial»."),
+      h("ul", { class: "presup" }, filas.filter((f) => f.g > 0 || f.p > 0).map((f) => {
+        const pct = f.p ? (f.g / f.p) * 100 : 0;
+        return h("li", {}, h("div", { class: "linea1" }, h("span", {}, f.c),
+          h("span", { class: f.p && f.g > f.p ? "alerta" : "" }, f.p ? `${f.g > f.p ? "⚠ " : ""}${soles(f.g)} de ${soles(f.p)}` : `${soles(f.g)} · sin presupuesto`)),
+        f.p ? h("div", { class: "pista" }, h("span", { class: `relleno ${f.g > f.p ? "pasado" : ""}`, style: `width:${Math.min(100, pct)}%` })) : null);
+      })),
+      h("button", { class: "secundario ancho", id: "editar-presupuestos", onclick: editar }, "Editar presupuestos"));
+  };
+  const editar = () => {
+    const inputs = cats.map((c) => ({ c, inp: h("input", { type: "number", min: "0", step: "10", inputmode: "decimal", value: pres[c] || "", placeholder: `sugerido ${sugerido(c)}` }) }));
+    const total = h("strong", {});
+    const sumar = () => { total.textContent = soles(inputs.reduce((a, x) => a + (Number(x.inp.value) || 0), 0)); };
+    inputs.forEach((x) => x.inp.addEventListener("input", sumar)); sumar();
+    sec.replaceChildren(h("h2", {}, "Editar presupuestos"),
+      h("p", { class: "suave pequeño" }, "Monto mensual en soles por categoría. Vacío = sin presupuesto. El sugerido es la mediana de tus últimos 6 meses."),
+      h("button", { class: "enlace", id: "sugerir", onclick: () => { inputs.forEach((x) => (x.inp.value = sugerido(x.c) || "")); sumar(); } }, "Sugerir según mi historial"),
+      h("div", { class: "presup-form" }, inputs.map((x) => h("label", { class: "campo fila-presup" }, h("span", {}, x.c), x.inp))),
+      h("p", { class: "derecha" }, "Total: ", total, meta !== null ? ` · meta ${soles(meta)}` : ""),
+      h("div", { class: "fila-botones" }, h("button", { class: "secundario", onclick: mostrar }, "Cancelar"),
+        h("button", { class: "primario", id: "guardar-presupuestos", onclick: async () => {
+          const lista = inputs.map((x) => ({ categoria: x.c, monto: Number(x.inp.value) || 0 }));
+          try { await api.guardarPresupuestos(lista); lista.forEach((p) => { if (p.monto > 0) pres[p.categoria] = p.monto; else delete pres[p.categoria]; });
+            toast("Presupuestos guardados"); mostrar(); } catch (e) { toast(e.message); }
+        } }, "Guardar")));
+  };
+  mostrar();
+  return sec;
+}
+
+function seccionPrecios() {
+  const sec = h("section", { class: "tarjeta" }, h("h2", {}, "Precios por producto"));
+  const q = h("input", { type: "search", id: "buscar-producto", placeholder: "Busca un producto (leche, manzana…)" });
+  const res = h("div", {});
+  let compras = null;
+  const pintar = async () => {
+    if (!compras) { res.replaceChildren(h("p", { class: "suave" }, "Cargando…")); compras = await api.compras(); }
+    const t = q.value.trim().toLowerCase();
+    const grupos = {};
+    for (const c of compras) if (!t || c.producto.toLowerCase().includes(t)) (grupos[c.producto.toLowerCase()] ||= []).push(c);
+    const lista = Object.values(grupos).sort((a, b) => (a[0].fecha_gasto < b[0].fecha_gasto ? 1 : -1)).slice(0, 30);
+    if (!compras.length) return res.replaceChildren(h("p", { class: "suave" }, "Todavía no hay productos: aparecen cuando dictas compras con producto y precio."));
+    res.replaceChildren(h("ul", { class: "lista-mov" }, lista.map((g) => {
+      const u = g[0], precios = g.filter((x) => x.precio_unitario).map((x) => x.precio_unitario);
+      const det = h("div", { class: "historial", hidden: true }, h("table", { class: "tabla" },
+        h("thead", {}, h("tr", {}, h("th", {}, "Fecha"), h("th", {}, "Lugar"), h("th", {}, "Precio"), h("th", {}, "Cant."))),
+        h("tbody", {}, g.map((x) => h("tr", {}, h("td", {}, ddmm(x.fecha_gasto) + "/" + x.fecha_gasto.slice(2, 4)), h("td", {}, x.lugar || "—"),
+          h("td", {}, x.precio_unitario ? `${fmt.format(x.precio_unitario)}${x.unidad === "kg" ? "/kg" : x.unidad === "L" ? "/L" : ""}` : "—"),
+          h("td", {}, x.cantidad ? `${x.cantidad.toLocaleString("es-PE", { maximumFractionDigits: 3 })} ${x.unidad || ""}` : "—"))))));
+      return h("li", { class: "mov columna", onclick: () => (det.hidden = !det.hidden) },
+        h("div", { class: "linea1" }, h("span", {}, u.producto), h("strong", {}, u.precio_unitario ? `${soles(u.precio_unitario)}${u.unidad === "kg" ? "/kg" : ""}` : soles(u.monto_pen))),
+        h("div", { class: "suave pequeño" }, `${g.length} compra${g.length > 1 ? "s" : ""} · última ${ddmm(u.fecha_gasto)}${u.lugar ? " en " + u.lugar : ""}` +
+          (precios.length > 1 ? ` · mín ${fmt.format(Math.min(...precios))} / máx ${fmt.format(Math.max(...precios))}` : "")), det);
+    })));
+  };
+  q.addEventListener("input", () => { clearTimeout(q._t); q._t = setTimeout(pintar, 250); });
+  sec.append(q, res, h("p", { class: "suave pequeño" }, "Se agrupan por el nombre tal como se dictó; el catálogo de la 2.1 unirá variantes."));
+  pintar().catch((e) => res.replaceChildren(h("p", { class: "error" }, e.message)));
+  return sec;
 }
 
 // ───────────── REEMBOLSOS ─────────────
@@ -579,6 +789,9 @@ function vistaMas(v) {
       try { await api.cambiarClave(n1.value); n1.value = n2.value = ""; toast("Contraseña cambiada"); } catch (x) { err.textContent = x.message; }
       cargando(btnC, false);
     } }, h("h2", {}, "Contraseña"), n1, n2, err, btnC),
+    h("section", { class: "tarjeta" }, h("h2", {}, "Recorrido de la IA"),
+      h("p", { class: "suave" }, "Cada dictado con sus dudas, errores y costo."),
+      h("button", { class: "secundario ancho", id: "ver-recorrido", onclick: () => irA("recorrido") }, "Ver recorrido")),
     h("section", { class: "tarjeta" }, h("p", { class: "suave" }, `Sesión: ${E.email}`),
       h("button", { class: "secundario ancho", onclick: async () => { await api.salir(); E.dictado = null; pantallaIngreso(); } }, "Cerrar sesión"),
       h("p", { class: "suave pequeño centro" }, `Gestor de Gastos ${VERSION}${DEMO ? " · demo" : ""}`)));

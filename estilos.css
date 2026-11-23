@@ -107,3 +107,30 @@ fieldset.fila-form legend { font-size: 14px; color: var(--suave); padding: 0 6px
 .tres { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 details.detalle-compra { margin-top: 12px; border-top: 1px dashed var(--borde); padding-top: 8px; }
 details.detalle-compra summary { cursor: pointer; color: var(--primario); font-size: 14px; padding: 4px 0; }
+/* análisis */
+.grafico { position: relative; margin: 12px 0 4px; }
+.grafico svg { width: 100%; height: auto; display: block; overflow: visible; }
+.grafico .eje { font-size: 11px; fill: var(--suave); }
+.grafico .eti-ref { font-size: 11px; fill: var(--suave); }
+.grafico .eti-serie { font-size: 11px; fill: var(--texto); font-weight: 600; }
+.tip { position: absolute; z-index: 5; background: #fff; border: 1px solid var(--borde); border-radius: 8px; padding: 6px 8px; font-size: 12px;
+  box-shadow: var(--sombra); pointer-events: none; white-space: nowrap; }
+.tip .tip-t { color: var(--suave); margin-bottom: 2px; }
+.tip i, .leyenda i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.leyenda { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--suave); margin-top: 4px; }
+.leyenda i { width: 14px; height: 3px; vertical-align: 3px; }
+.estado { padding: 8px 10px; border-radius: 8px; font-size: 14px; margin: 10px 0 0; }
+.estado.bien { background: #e3f3e8; color: #1f5e39; } .estado.mal { background: var(--error-fondo); color: var(--error); }
+h3 { font-size: 15px; margin: 16px 0 0; }
+.tabla { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; font-variant-numeric: tabular-nums; }
+.tabla th { text-align: left; color: var(--suave); font-weight: 500; border-bottom: 1px solid var(--borde); padding: 4px; }
+.tabla td { border-bottom: 1px solid #f0eee8; padding: 5px 4px; } .tabla td:not(:first-child), .tabla th:not(:first-child) { text-align: right; }
+.tabla td.alerta { color: var(--error); font-weight: 600; }
+.simple { padding-left: 18px; margin: 6px 0; font-size: 14px; } .tachado { color: var(--suave); text-decoration: line-through; }
+.presup { list-style: none; padding: 0; margin: 8px 0 0; } .presup li { padding: 8px 0; border-bottom: 1px solid #f0eee8; font-size: 14px; }
+.presup .pista { margin-top: 6px; } .relleno.pasado { background: var(--error); }
+.fila-presup { display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 8px; color: var(--texto); }
+.fila-presup input { margin-top: 0; text-align: right; }
+.mov.columna { flex-direction: column; align-items: stretch; gap: 2px; } .historial { margin-top: 6px; }
+.buscador { margin-bottom: 12px; }
+details.tarjeta summary { cursor: pointer; font-weight: 600; }

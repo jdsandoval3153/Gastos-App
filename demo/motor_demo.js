@@ -2768,6 +2768,41 @@ function crearApiDemo() {
     origen: "manual"
   });
   void ym;
+  let semilla = 7;
+  const azar = () => (semilla = (semilla * 9301 + 49297) % 233280) / 233280;
+  const BASE = [
+    ["Supermercado y mercado", "mercado", 95, "Yape"],
+    ["Restaurantes", "almuerzo", 22, "Plin"],
+    ["Taxi", "taxi", 15, "Yape"],
+    ["Bebidas", "bebida", 6, "Provis"],
+    ["Alquiler", "alquiler", 1200, "D\xE9bito BBVA"],
+    ["Streaming", "netflix", 42, "Bancolombia"]
+  ];
+  for (let k = 1; k <= 14; k++) {
+    const base = /* @__PURE__ */ new Date(h + "T12:00:00Z");
+    base.setUTCDate(1);
+    base.setUTCMonth(base.getUTCMonth() - k);
+    const pico = k === 4 ? 1.9 : k === 9 ? 1.5 : 1;
+    for (let dia = 1; dia <= 28; dia += 2) {
+      const f = new Date(base);
+      f.setUTCDate(dia);
+      const fecha = f.toISOString().slice(0, 10);
+      const [sub, desc, m, met2] = BASE[Math.floor(azar() * 4)];
+      sembrar(fecha, sub, desc, Math.round(m * (0.6 + azar() * 0.8) * pico * 100) / 100, met2);
+    }
+    const f1 = new Date(base);
+    f1.setUTCDate(2);
+    sembrar(f1.toISOString().slice(0, 10), "Alquiler", "alquiler", 1200, "D\xE9bito BBVA");
+    if (k % 3 === 0) sembrar(
+      new Date(base.getTime() + 10 * 864e5).toISOString().slice(0, 10),
+      "Taxi",
+      "taxi a obra, paga Pedelta",
+      30 + k,
+      "Yape",
+      { reembolsable: true, proyecto_id: proy("Tarata").id, concepto: "visita", estado_reembolso: "Reembolsado", monto_reembolsado: 30 + k }
+    );
+  }
+  const presupuestos = { "Alimentaci\xF3n": 600 };
   const repo = {
     libro: (l) => Promise.resolve(!l || l === LIBRO ? LIBRO : null),
     contexto: () => Promise.resolve({ ...ctx, libroId: LIBRO }),
@@ -2919,6 +2954,101 @@ function crearApiDemo() {
     },
     async costoMes() {
       return { llamadas: recorridos.length, total: recorridos.reduce((s, r) => s + (r.costo_usd ?? 0), 0) };
+    },
+    // ---------- análisis (misma regla que 10_analisis.sql) ----------
+    async asegurarMes() {
+    },
+    async metas() {
+      const mesIni = (d2) => d2.slice(0, 7) + "-01";
+      const gastoMes = (ym2) => movs.filter((m) => m.tipo === "Gasto" && !m.reembolsable && m.fecha_gasto.startsWith(ym2)).reduce((a, m) => a + m.monto_pen, 0);
+      const meses = [...new Set(movs.map((m) => m.fecha_gasto.slice(0, 7)))].sort();
+      const calc = (ym2) => {
+        const prev = meses.filter((x) => x < ym2).slice(-12).map((x) => ({ mes: x, gasto: Math.round(gastoMes(x) * 100) / 100 }));
+        if (prev.length < 3) return { meta: 2500, tope: null, metodo: "menos de 3 meses de historia: meta por defecto", meses: prev };
+        const ord = prev.map((x) => x.gasto).sort((a, b) => a - b);
+        const n = ord.length;
+        const mediana = n % 2 ? ord[(n - 1) / 2] : (ord[n / 2 - 1] + ord[n / 2]) / 2;
+        const tope = Math.round(mediana * 125) / 100;
+        const norm2 = prev.filter((x) => x.gasto <= tope);
+        const prom = norm2.reduce((a, x) => a + x.gasto, 0) / norm2.length;
+        const meta = norm2.length >= 3 ? Math.ceil(prom / 100) * 100 - 200 : Math.ceil(mediana / 100) * 100 - 200;
+        return {
+          meta,
+          tope,
+          mediana,
+          promedio_normales: Math.round(prom * 100) / 100,
+          metodo: norm2.length >= 3 ? "promedio de meses normales" : "pocos meses normales: mediana",
+          meses: prev.map((x) => ({ ...x, incluido: x.gasto <= tope }))
+        };
+      };
+      const actual = hoyLima().slice(0, 7);
+      return meses.filter((x) => x <= actual).slice(1).reverse().slice(0, 24).map((ym2) => {
+        const c = calc(ym2);
+        const ant = meses[meses.indexOf(ym2) - 1];
+        const gAnt = gastoMes(ant);
+        const mAnt = calc(ant).meta;
+        const cats = {};
+        movs.filter((m) => m.tipo === "Gasto" && !m.reembolsable && m.fecha_gasto.startsWith(ant)).forEach((m) => {
+          const k = plano(m).categoria;
+          cats[k] = (cats[k] || 0) + m.monto_pen;
+        });
+        return { mes: mesIni(ym2 + "-01"), meta: c.meta, tope: c.tope, calculo: c, reporte: {
+          mes: ant,
+          gasto: Math.round(gAnt * 100) / 100,
+          meta: mAnt,
+          cumplio: gAnt <= mAnt,
+          diferencia: Math.round((mAnt - gAnt) * 100) / 100,
+          promedio_12m: null,
+          variacion_vs_promedio_pct: null,
+          dia_supero_meta: null,
+          movimientos: movs.filter((m) => m.fecha_gasto.startsWith(ant)).length,
+          por_categoria: Object.entries(cats).map(([categoria, gasto]) => ({ categoria, gasto: Math.round(gasto * 100) / 100, presupuesto: presupuestos[categoria] ?? null, promedio_6m: null })).sort((a, b) => b.gasto - a.gasto),
+          mayores_gastos: movs.filter((m) => m.tipo === "Gasto" && !m.reembolsable && m.fecha_gasto.startsWith(ant)).sort((a, b) => b.monto_pen - a.monto_pen).slice(0, 5).map((m) => ({ fecha: m.fecha_gasto, descripcion: m.descripcion, monto: m.monto_pen })),
+          reembolsables: { gastado_mes: 0, por_cobrar_al_cierre: 0 }
+        } };
+      });
+    },
+    async resumenMensual() {
+      const filas = {};
+      for (const m of movs) {
+        if (m.tipo !== "Gasto") continue;
+        const k = m.fecha_gasto.slice(0, 7) + "|" + (plano(m).categoria || "Sin categor\xEDa");
+        filas[k] ||= { mes: m.fecha_gasto.slice(0, 7), categoria: plano(m).categoria || "Sin categor\xEDa", gasto: 0, reembolsable: 0, devuelto: 0 };
+        if (m.reembolsable) {
+          filas[k].reembolsable += m.monto_pen;
+          if (m.monto_reembolsado) filas[k].devuelto += m.monto_reembolsado;
+        } else filas[k].gasto += m.monto_pen;
+      }
+      return Object.values(filas);
+    },
+    async gastoDiario(desde) {
+      const d2 = {};
+      movs.filter((m) => m.tipo === "Gasto" && !m.reembolsable && m.fecha_gasto >= desde).forEach((m) => d2[m.fecha_gasto] = (d2[m.fecha_gasto] || 0) + m.monto_pen);
+      return Object.entries(d2).sort().map(([fecha, gasto]) => ({ fecha, gasto }));
+    },
+    async presupuestos() {
+      return Object.entries(presupuestos).map(([categoria, monto]) => ({ categoria, monto }));
+    },
+    async guardarPresupuestos(lista) {
+      for (const p of lista) {
+        if (p.monto > 0) presupuestos[p.categoria] = p.monto;
+        else delete presupuestos[p.categoria];
+      }
+    },
+    async compras() {
+      return movs.filter((m) => m.producto).sort(orden).map((m) => ({
+        fecha_gasto: m.fecha_gasto,
+        producto: m.producto,
+        lugar: m.lugar,
+        cantidad: m.cantidad,
+        unidad: m.unidad,
+        precio_unitario: m.precio_unitario,
+        monto_pen: m.monto_pen
+      }));
+    },
+    async buscar(texto) {
+      const t = norm(texto);
+      return movs.filter((m) => [m.descripcion, m.producto, m.lugar, m.concepto].some((x) => x && norm(x).includes(t))).sort(orden).map(plano).slice(0, 200);
     },
     async todoElLibro() {
       return [...movs].sort((a, b) => -orden(a, b)).map(plano);
