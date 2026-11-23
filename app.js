@@ -1,7 +1,7 @@
 // Gestor de Gastos 2.0 — app (PWA). Sin compilación: módulos ES y librerías locales en vendor/.
 import { CONFIG } from "./config.js";
 
-const VERSION = "2.0.0";
+const VERSION = "2.0.1";
 const DEMO = new URLSearchParams(location.search).has("demo") || !CONFIG.CLAVE_PUBLICA;
 const api = DEMO ? (await import("./demo/motor_demo.js")).crearApiDemo() : (await import("./api.js")).crearApi(CONFIG);
 
@@ -235,7 +235,7 @@ function desdeFicha(f) {
   return { fecha_gasto: f.fecha_gasto, tipo: f.tipo, categoria_id: c?.id ?? f.categoria_id ?? "", descripcion: f.descripcion,
     moneda: f.moneda, monto_original: f.monto_original, tipo_cambio: f.tipo_cambio ?? tcVigente(f.moneda, f.fecha_gasto),
     metodo_pago_id: f.metodo_pago_id ?? "", reembolsable: f.reembolsable, proyecto_id: f.proyecto_id ?? "",
-    concepto: f.concepto ?? "", lugar: f.lugar ?? "", cantidad: f.cantidad ?? null, unidad: f.unidad ?? "und",
+    concepto: f.concepto ?? "", lugar: f.lugar ?? "", producto: f.producto ?? null, cantidad: f.cantidad ?? null, unidad: f.unidad ?? "und",
     precio_unitario: f.precio_unitario ?? null };
 }
 function selectCategorias(valor) {
@@ -279,7 +279,8 @@ function bloqueFila(f, marcados, i, quitar) {
     filaTc,
     campo("metodo_pago", "Método de pago", selectLista("metodo_pago_id", E.base.metodos, f.metodo_pago_id, "— método —")),
     h("label", { class: "check" }, reemb, " Lo reembolsa la empresa"), extraReemb);
-  bloque._extra = { cantidad: f.cantidad ?? null, unidad: f.unidad ?? "und", precio_unitario: f.precio_unitario ?? null, lugar: f.lugar ?? null };
+  bloque._extra = { cantidad: f.cantidad ?? null, unidad: f.unidad ?? "und", precio_unitario: f.precio_unitario ?? null,
+    lugar: f.lugar ?? null, producto: f.producto ?? null };
   return bloque;
 }
 function leerFila(b) {
@@ -359,7 +360,10 @@ async function detalleMovimiento(m) {
   const accion = await modal(m.descripcion, h("div", {},
     dato("Fecha", m.fecha_gasto), dato("Tipo", m.tipo), dato("Categoría", m.categoria && `${m.categoria} / ${m.subcategoria}`),
     dato("Monto", monto(m.monto_original, m.moneda)), m.moneda !== "PEN" ? dato("En soles", `${soles(m.monto_pen)} (TC ${m.tipo_cambio})`) : null,
-    dato("Método", m.metodo), dato("Lugar", m.lugar), m.reembolsable ? dato("Reembolso", `${m.estado_reembolso} · ${m.proyecto || "sin proyecto"}`) : null,
+    dato("Método", m.metodo), dato("Lugar", m.lugar), dato("Producto", m.producto),
+    m.cantidad && m.precio_unitario ? dato("Cantidad", `${fmt.format(m.cantidad).replace(/,00$/, "")} ${m.unidad || "und"} × ${soles(m.precio_unitario)}`)
+      : m.cantidad && m.cantidad !== 1 ? dato("Cantidad", `${m.cantidad} ${m.unidad || "und"}`) : null,
+    m.reembolsable ? dato("Reembolso", `${m.estado_reembolso} · ${m.proyecto || "sin proyecto"}`) : null,
     dato("Concepto", m.concepto), dato("Origen", m.origen)),
   [{ texto: "Borrar", valor: "borrar", clase: "peligro" }, { texto: "Editar", valor: "editar" }, { texto: "Cerrar", valor: null, clase: "primario" }]);
   if (accion === "borrar" && await confirmar("¿Borrar este movimiento?", `${m.descripcion} · ${monto(m.monto_original, m.moneda)}. No se puede deshacer.`, "Borrar")) {
@@ -542,11 +546,12 @@ async function descargarRespaldo() {
     Fecha: m.fecha_gasto, Registrado: m.registrado_en ? new Date(m.registrado_en).toLocaleString("es-PE", { timeZone: "America/Lima" }) : "",
     Tipo: m.tipo, Categoría: m.categoria, Subcategoría: m.subcategoria, Descripción: m.descripcion, Moneda: m.moneda,
     "Monto original": m.monto_original, "Tipo de cambio": m.tipo_cambio, "Monto S/": m.monto_pen, Método: m.metodo, Lugar: m.lugar || "",
+    Producto: m.producto || "", Cantidad: m.cantidad ?? "", Unidad: m.cantidad ? m.unidad : "", "Precio unitario": m.precio_unitario ?? "",
     Reembolsable: m.reembolsable ? "Sí" : "", Proyecto: m.proyecto, Concepto: m.concepto || "", "Estado reembolso": m.estado_reembolso || "",
     "Monto reembolsado": m.monto_reembolsado ?? "", Origen: m.origen,
   }));
   const ws = window.XLSX.utils.json_to_sheet(filas);
-  ws["!cols"] = [10, 18, 10, 18, 22, 40, 7, 12, 12, 12, 13, 14, 12, 26, 22, 16, 14, 10].map((w) => ({ wch: w }));
+  ws["!cols"] = [10, 18, 10, 18, 22, 40, 7, 12, 12, 12, 13, 14, 24, 9, 7, 12, 12, 26, 22, 16, 14, 10].map((w) => ({ wch: w }));
   const wb = window.XLSX.utils.book_new();
   window.XLSX.utils.book_append_sheet(wb, ws, "Movimientos");
   window.XLSX.writeFile(wb, `respaldo_gastos_${hoyLima()}.xlsx`);

@@ -9,6 +9,7 @@ function plano(m) {
     metodo: m.metodos_pago?.nombre ?? "", proyecto: m.proyectos?.nombre ?? "",
     monto_original: Number(m.monto_original), monto_pen: Number(m.monto_pen),
     tipo_cambio: Number(m.tipo_cambio), monto_reembolsado: m.monto_reembolsado === null ? null : Number(m.monto_reembolsado),
+    cantidad: m.cantidad === null ? null : Number(m.cantidad), precio_unitario: m.precio_unitario === null ? null : Number(m.precio_unitario),
   };
 }
 function ok(r) {

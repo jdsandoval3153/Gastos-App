@@ -1,4 +1,4 @@
-// supabase/functions/dictado/reglas.ts
+// ../supabase/functions/dictado/reglas.ts
 var TIPOS = ["Gasto", "Reembolso", "Ingreso ocasional", "Inversi\xF3n"];
 var MONEDAS = ["PEN", "USD", "COP"];
 var REGLAS = `Eres un extractor de gastos personales a partir de dictados en espa\xF1ol de Per\xFA y Colombia.
@@ -124,7 +124,7 @@ function armarEsquema(ctx) {
   };
 }
 
-// supabase/functions/dictado/numeros.ts
+// ../supabase/functions/dictado/numeros.ts
 function norm(t) {
   return t.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
@@ -281,7 +281,7 @@ function candidatosMonto(texto) {
 }
 var aparece = (valor, cands) => cands.some((c) => Math.abs(valor - c) < 5e-3);
 
-// supabase/functions/dictado/validacion.ts
+// ../supabase/functions/dictado/validacion.ts
 var rd2 = (x) => Math.round(x * 100) / 100;
 function restarDias(iso, n) {
   const d = /* @__PURE__ */ new Date(iso + "T12:00:00Z");
@@ -411,6 +411,7 @@ function validarExtraccion(js, texto, ctx, hoy) {
       proyecto_id: it.proyecto ? porProyecto.get(it.proyecto)?.id ?? null : null,
       concepto: it.concepto ?? null,
       estado_reembolso: it.reembolsable ? "Pendiente" : null,
+      producto: (it.producto || "").trim() || null,
       cantidad: cant,
       unidad: it.unidad || "und",
       precio_unitario: pu ?? puCalculado
@@ -460,7 +461,7 @@ function validarFilasManuales(filas, ctx, hoy) {
   return errores;
 }
 
-// supabase/functions/dictado/logica.ts
+// ../supabase/functions/dictado/logica.ts
 var resultadoVacio = (error) => ({
   filas: [],
   errores: [error],
@@ -510,7 +511,7 @@ function costoUSD(uso, precioEntrada, precioSalida) {
   return (uso.entrada * precioEntrada + uso.salida * precioSalida) / 1e6;
 }
 
-// supabase/functions/dictado/manejador.ts
+// ../supabase/functions/dictado/manejador.ts
 var CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -644,7 +645,7 @@ function crearManejador(d) {
   };
 }
 
-// supabase/functions/dictado/test/fixture_prototipo.json
+// ../supabase/functions/dictado/test/fixture_prototipo.json
 var fixture_prototipo_default = {
   hoy: "2026-11-22",
   ctx: {
@@ -2662,7 +2663,7 @@ var fixture_prototipo_default = {
   }
 };
 
-// app/demo/demo_api.ts
+// demo/demo_api.ts
 var hoyLima = () => (/* @__PURE__ */ new Date()).toLocaleDateString("en-CA", { timeZone: "America/Lima" });
 var uuid = () => crypto.randomUUID();
 function crearApiDemo() {
